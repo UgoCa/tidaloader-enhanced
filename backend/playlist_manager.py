@@ -481,9 +481,7 @@ class PlaylistManager:
         
         if playlist.use_playlist_folder:
             safe_pl_name = sanitize_path_component(playlist.name)
-            # Use 'tidaloader_playlists' explicitly to match PLAYLISTS_DIR logic
-            # This makes the path relative to DOWNLOAD_DIR be: tidaloader_playlists/PlaylistName/Track - Title
-            org_template = f"tidaloader_playlists/{safe_pl_name}/{{TrackNumber}} - {{Title}}"
+            org_template = f"tidaloader_playlists/{safe_pl_name}/{settings.organization_template}"
             group_compilations = False
         
         for i, item in enumerate(raw_items):
