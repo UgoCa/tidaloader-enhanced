@@ -401,7 +401,6 @@ class PlaylistManager:
                 if progress_id:
                     from api.state import lb_progress_queues, import_states
                     
-                    # Reverted to debug for production
                     logger.debug(f"DEBUG: progress_logger called for {progress_id}. Data keys: {list(data.keys())}")
                     
                     # 1. Backward Compat: Queue
@@ -412,15 +411,16 @@ class PlaylistManager:
                     if progress_id in import_states:
                         state = import_states[progress_id]
                         
-                        # Update counters if present
-                        
-                        # Update counters if present
                         if "progress" in data:
                             state["current"] = data["progress"]
                         if "total" in data:
                             state["total"] = data["total"]
                         if "matches_found" in data:
                             state["matches"] = data["matches_found"]
+                        
+                        # Store tracks when analysis is complete
+                        if data.get("type") == "analysis_complete" and "tracks" in data:
+                            state["tracks"] = data["tracks"]
                         
                         # Append message
                         if data.get("message"):
@@ -434,9 +434,6 @@ class PlaylistManager:
                             if len(state["messages"]) > 50:
                                 state["messages"] = state["messages"][-50:]
 
-            # 'extra_config' should contain 'spotify_id' or we use playlist.uuid if that's where we stored it
-            # The MonitorPlaylistRequest uses 'uuid' for the Spotify ID usually?
-            # Let's assume playlist.uuid IS the Spotify ID for now, or check extra_config
             spotify_id = playlist.uuid
             if playlist.extra_config and 'spotify_id' in playlist.extra_config:
                 spotify_id = playlist.extra_config['spotify_id']
@@ -447,25 +444,31 @@ class PlaylistManager:
                 validate=True
             )
             
-            # Normalize to match "Tidal Item" structure
+            # Normalize ALL tracks to "Tidal Item" structure (including unmatched)
             normalized = []
             for t in tracks:
-                if not t.get('tidal_exists') or not t.get('tidal_id'):
-                    continue
-                    
-                normalized.append({
-                    'tidal_exists': True, # Required for match counting downstream
-                    'item': {
-                        'id': int(t['tidal_id']) if str(t['tidal_id']).isdigit() else t['tidal_id'],
-                        'title': t['title'],
-                        'artist': {'name': t['artist'], 'id': t.get('tidal_artist_id')},
-                        'album': {'title': t.get('album', 'Unknown Album'), 'id': t.get('tidal_album_id'), 'cover': t.get('cover')},
-                        'trackNumber': t.get('track_number'),
-                        'duration': -1
-                    }
-                })
+                if t.get('tidal_exists') and t.get('tidal_id'):
+                    normalized.append({
+                        'tidal_exists': True,
+                        'item': {
+                            'id': int(t['tidal_id']) if str(t['tidal_id']).isdigit() else t['tidal_id'],
+                            'title': t['title'],
+                            'artist': {'name': t['artist'], 'id': t.get('tidal_artist_id')},
+                            'album': {'title': t.get('album', 'Unknown Album'), 'id': t.get('tidal_album_id'), 'cover': t.get('cover')},
+                            'trackNumber': t.get('track_number'),
+                            'duration': -1
+                        }
+                    })
+                else:
+                    # Keep unmatched tracks as placeholders (skipped by _process_playlist_items)
+                    normalized.append({
+                        'tidal_exists': False,
+                        'item': None,
+                        'spotify_title': t.get('spotify_title', t.get('title')),
+                        'spotify_artist': t.get('spotify_artist', t.get('artist')),
+                    })
             
-            logger.info(f"Spotify Sync: Normalized {len(normalized)} tracks (Matched)")
+            logger.info(f"Spotify Sync: Normalized {len(normalized)} tracks ({sum(1 for n in normalized if n.get('tidal_exists'))} matched)")
             return normalized
 
         except Exception as e:

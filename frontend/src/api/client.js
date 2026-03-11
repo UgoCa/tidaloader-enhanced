@@ -247,6 +247,20 @@ class ApiClient {
     }
 
     /**
+     * Search Tidal for a single track (manual re-search with scored candidates)
+     */
+    searchTidalForTrack(query) {
+        return this.post("/spotify/search-track", { query });
+    }
+
+    /**
+     * Confirm sync with user-overridden track list
+     */
+    confirmSyncOverrides(progressId, tracks) {
+        return this.post(`/spotify/progress/${progressId}/confirm`, { tracks });
+    }
+
+    /**
      * Generate m3u8 playlist file from validated Spotify tracks
      */
     generateSpotifyM3U8(playlistName, tracks) {

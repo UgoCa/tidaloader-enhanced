@@ -6,7 +6,7 @@ from typing import List, Dict, Any
 from api.state import lb_progress_queues
 from api.utils.logging import log_info, log_error, log_success
 from api.utils.text import fix_unicode
-from api.services.search import search_track_with_fallback
+from api.services.search import search_track_with_candidates
 from api.services.files import get_output_relative_path, sanitize_path_component
 from api.settings import DOWNLOAD_DIR, PLAYLISTS_DIR
 from api.clients.spotify import SpotifyClient
@@ -84,58 +84,65 @@ async def fetch_and_validate_spotify_playlist(
             title = fix_unicode(s_track.title)
             artist = fix_unicode(s_track.artist)
             album = fix_unicode(s_track.album) if s_track.album else None
+            duration_ms = s_track.duration_ms
             
-            # Mutable container for search results
-            class TrackContainer:
-                def __init__(self):
-                    self.title = title
-                    self.artist = artist
-                    self.album = album
-                    self.tidal_id = None
-                    self.tidal_artist_id = None
-                    self.tidal_album_id = None
-                    self.tidal_exists = False
-                    self.cover = None
-                    self.track_number = None # Initialize track_number
-
-            track_obj = TrackContainer()
+            track_data = {
+                "spotify_title": title,
+                "spotify_artist": artist,
+                "spotify_album": album,
+                "duration_ms": duration_ms,
+                "title": title,
+                "artist": artist,
+                "album": album,
+                "tidal_id": None,
+                "tidal_artist_id": None,
+                "tidal_album_id": None,
+                "tidal_exists": False,
+                "cover": None,
+                "track_number": None,
+                "match_score": 0.0,
+                "candidates": [],
+                "db_id": s_track.spotify_id,
+            }
             
-            # Perform search
+            # Perform search with candidates
             if validate:
-                await search_track_with_fallback(artist, title, track_obj)
+                candidates = search_track_with_candidates(artist, title, duration_ms, limit=5)
+                track_data["candidates"] = candidates
                 
-                # Check match and increment counter
-                if track_obj.tidal_exists:
+                if candidates:
+                    best = candidates[0]
+                    track_data["tidal_id"] = best["tidal_id"]
+                    track_data["tidal_artist_id"] = best["artist_id"]
+                    track_data["tidal_album_id"] = best["album_id"]
+                    track_data["tidal_exists"] = True
+                    track_data["match_score"] = best["score"]
+                    # Normalize from Tidal (for file-path consistency)
+                    track_data["title"] = best["title"]
+                    track_data["artist"] = best["artist"]
+                    track_data["album"] = best["album"]
+                    track_data["cover"] = best["cover"]
+                    track_data["track_number"] = best["track_number"]
                     matches_found += 1
                 
                 display_text = f"{artist} - {title}"
+                score_pct = int(track_data["match_score"] * 100)
                 await report({
                     "type": "validating",
-                    "message": f"Validating: {display_text}",
+                    "message": f"Validating: {display_text}" + (f" ({score_pct}%)" if track_data["tidal_exists"] else " (no match)"),
                     "progress": i,
                     "total": total_tracks,
                     "matches_found": matches_found,
                     "current_track": {
                         "artist": artist,
                         "title": title,
-                        "matched": track_obj.tidal_exists
+                        "matched": track_data["tidal_exists"],
+                        "score": track_data["match_score"],
                     }
                 })
-                # Small delay
                 await asyncio.sleep(0.05)
             
-            validated_tracks.append({
-                "title": track_obj.title,
-                "artist": track_obj.artist,
-                "album": track_obj.album,
-                "tidal_id": track_obj.tidal_id,
-                "tidal_artist_id": track_obj.tidal_artist_id,
-                "tidal_album_id": track_obj.tidal_album_id,
-                "tidal_exists": track_obj.tidal_exists,
-                "cover": track_obj.cover,
-                "track_number": getattr(track_obj, 'track_number', None),
-                "db_id": s_track.spotify_id
-            })
+            validated_tracks.append(track_data)
 
         found_count = sum(1 for t in validated_tracks if t["tidal_exists"])
         

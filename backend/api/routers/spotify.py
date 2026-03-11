@@ -3,9 +3,11 @@ import json
 import asyncio
 import re
 import logging
+from typing import List, Optional, Dict, Any
 from pathlib import Path
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException
 from fastapi.responses import StreamingResponse
+from pydantic import BaseModel
 
 from api.models import SpotifyGenerateRequest, SpotifyM3U8Request
 from api.auth import require_auth, require_auth_stream
@@ -16,6 +18,14 @@ router = APIRouter()
 logger = logging.getLogger(__name__)
 
 from api.clients.spotify import SpotifyClient
+
+
+class TrackSearchRequest(BaseModel):
+    query: str
+
+
+class ConfirmSyncRequest(BaseModel):
+    tracks: List[Dict[str, Any]]
 
 @router.get("/api/spotify/search")
 async def search_spotify_playlists(
@@ -147,3 +157,73 @@ async def create_spotify_m3u8(
     except Exception as e:
         logger.error(f"Failed to generate m3u8: {e}")
         raise HTTPException(status_code=500, detail=f"Failed to generate playlist: {str(e)}")
+
+
+@router.post("/api/spotify/search-track")
+async def search_tidal_for_track(
+    request: TrackSearchRequest,
+    user: str = Depends(require_auth)
+):
+    """Search Tidal for a single track query and return scored candidates."""
+    from api.services.search import search_track_with_candidates
+    from api.utils.text import fix_unicode
+
+    query = fix_unicode(request.query.strip())
+    if not query:
+        raise HTTPException(status_code=400, detail="Query is required")
+
+    # Split query into artist/title if possible, otherwise use as-is
+    parts = query.split(" - ", 1)
+    if len(parts) == 2:
+        artist, title = parts[0].strip(), parts[1].strip()
+    else:
+        artist, title = "", query
+
+    candidates = search_track_with_candidates(artist, title, limit=10)
+    return {"candidates": candidates}
+
+
+@router.post("/api/spotify/progress/{progress_id}/confirm")
+async def confirm_sync_overrides(
+    progress_id: str,
+    request: ConfirmSyncRequest,
+    user: str = Depends(require_auth)
+):
+    """
+    Accept the user's finalized track list (with overrides) and rebuild import_cache.
+    Called before syncPlaylist to apply user's match corrections.
+    """
+    from api.state import import_cache, import_states
+
+    if not request.tracks:
+        raise HTTPException(status_code=400, detail="No tracks provided")
+
+    # Rebuild normalized items for import_cache (same format _fetch_spotify_items produces)
+    normalized = []
+    for t in request.tracks:
+        if t.get('tidal_exists') and t.get('tidal_id'):
+            tidal_id = t['tidal_id']
+            normalized.append({
+                'tidal_exists': True,
+                'item': {
+                    'id': int(tidal_id) if str(tidal_id).isdigit() else tidal_id,
+                    'title': t.get('title', 'Unknown'),
+                    'artist': {'name': t.get('artist', 'Unknown'), 'id': t.get('tidal_artist_id')},
+                    'album': {
+                        'title': t.get('album', 'Unknown Album'),
+                        'id': t.get('tidal_album_id'),
+                        'cover': t.get('cover'),
+                    },
+                    'trackNumber': t.get('track_number'),
+                    'duration': -1
+                }
+            })
+
+    import_cache[progress_id] = normalized
+    logger.info(f"Rebuilt import_cache for {progress_id}: {len(normalized)} matched tracks")
+
+    # Also update import_states tracks if present
+    if progress_id in import_states:
+        import_states[progress_id]["tracks"] = request.tracks
+
+    return {"status": "ok", "matched_count": len(normalized)}

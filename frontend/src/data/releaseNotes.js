@@ -1,5 +1,22 @@
 export const releaseNotes = [
     {
+        version: "1.4.1",
+        date: "2026-03-11",
+        title: "Smart Spotify Matching with Match Scores & Review System",
+        changes: [
+            "New Intelligent Matching: All Spotify→Tidal track matching now includes confidence scores (percentage-based) so you know which matches are reliable.",
+            "Match Score Visual Badges: Color-coded badges show Perfect (green, ≥85%), Review (yellow, 50-84%), and Missing (red, <50%) matches at a glance.",
+            "Alternative Track Selection: When a track matches with lower confidence, click to view up to 5 alternative Tidal matches ranked by score.",
+            "Manual Search per Track: Right-click any track to manually search Tidal and select the correct match without leaving the playlist review.",
+            "Two-Phase Spotify Import: Manual Import now gives you choice—fetch the playlist first, then click 'Find Matches on Tidal' when ready. No more auto-checking.",
+            "Live Matching Progress: Watch real-time progress as matches are found, with track count and match statistics updating live.",
+            "Perfect/Review/Missing Categories: After matching, tracks are automatically sorted into tabs so you know exactly which ones need attention.",
+            "Smart Download Button: 'Add to Queue' button now always shows the actual count of matched tracks—never shows 'Add 0' anymore.",
+            "Integrated UI/UX: Both Manual Import and Spotify Search tabs share the same powerful review workflow for consistency.",
+            "Close Matches Handled: Titles with slight differences (brackets, feat. versions, etc.) are now matched correctly using fuzzy matching with duration verification."
+        ]
+    },
+    {
         version: "1.4.0",
         date: "2026-02-14",
         title: "Settings System Overhaul & Multi-User Support + Performance Boost",
