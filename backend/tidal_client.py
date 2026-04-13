@@ -7,7 +7,7 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 import requests
 
 
-ENDPOINTS_URL = "https://raw.githubusercontent.com/EduardPrigoana/hifi-instances/refs/heads/main/instances.json"
+INSTANCES_FILE = Path(__file__).parent / "instances.json"
 
 
 CACHE_TTL = 3600
