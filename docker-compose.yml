@@ -5,7 +5,7 @@ services:
       args:
         USER_UID: ${USER_UID:-1000}
         USER_GID: ${USER_GID:-1000}
-    container_name: tidaloader
+    container_name: tidaloader-enhanced
     ports:
       - "8002:8002"
     environment:
