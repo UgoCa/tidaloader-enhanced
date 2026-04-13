@@ -7,7 +7,7 @@ services:
         USER_GID: ${USER_GID:-1000}
     container_name: tidaloader
     ports:
-      - "8001:8001"
+      - "8002:8002"
     environment:
       - MUSIC_DIR=${MUSIC_DIR:-/music}
       - AUTH_USERNAME=${AUTH_USERNAME:-admin}
